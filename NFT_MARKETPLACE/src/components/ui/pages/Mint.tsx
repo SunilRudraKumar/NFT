@@ -1,6 +1,6 @@
 
 import  MintNFT  from '../../mint/test';
-import Upload from '../../mint/Upload';
+
 
 const MintPage = () => {
     return (
