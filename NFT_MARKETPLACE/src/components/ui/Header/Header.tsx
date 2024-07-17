@@ -8,6 +8,9 @@ const Header = () => {
         <header className="flex justify-between items-center p-4 bg-gray-800 text-white">
                     <nav className="flex-1">
                 <ul className="flex gap-4">
+                <li>
+                        <Link to="/" className="text-white no-underline hover:underline">Home</Link>
+                    </li>
                     <li>
                         <Link to="/mint" className="text-white no-underline hover:underline">Mint</Link>
                     </li>
