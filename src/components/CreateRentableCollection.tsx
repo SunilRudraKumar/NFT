@@ -125,7 +125,7 @@ export default function CreateRentableCollection() {
           <p className="text-sm text-yellow-800">
             <strong>Note:</strong> Only ERC-4907 compatible collections can be
             listed for rent. Regular collections created with the standard
-            factory won't support rental features.
+            factory won&apos;t support rental features.
           </p>
         </div>
       </div>

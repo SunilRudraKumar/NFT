@@ -209,7 +209,7 @@ export default function Marketplace({ userAddress }: MarketplaceProps) {
     } finally {
       setLoading(false);
     }
-  }, [factoryABI, fetchCollectionNFTs]);
+  }, [factoryABI, fetchCollectionNFTs, userAddress]);
 
   // Fetch listed NFTs - simplified for now (individual listings can be checked per NFT)
   const fetchListedNFTs = useCallback(async () => {
@@ -584,12 +584,12 @@ export default function Marketplace({ userAddress }: MarketplaceProps) {
                               nftContract={collection.collectionAddress}
                               tokenId={nft.tokenId}
                               userAddress={userAddress}
-                              isOwner={
+                              isOwner={Boolean(
                                 nft.owner &&
                                 userAddress &&
                                 nft.owner.toLowerCase() ===
                                 userAddress.toLowerCase()
-                              }
+                              )}
                               marketplaceABI={marketplaceABI}
                               collectionABI={rentableCollectionABI} // Use rentable ABI for rentable collections
                               onRentalUpdate={() => {
