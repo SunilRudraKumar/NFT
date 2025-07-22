@@ -398,6 +398,30 @@ export default function Marketplace({ userAddress }: MarketplaceProps) {
     return <div>Loading collections...</div>;
   }
 
+  // Check if environment variables are loaded
+  if (!factoryAddress || !marketplaceAddress) {
+    return (
+      <div className="max-w-4xl mx-auto p-6">
+        <div className="bg-red-50 rounded-xl shadow-md p-8">
+          <div className="uppercase tracking-wide text-sm text-red-500 font-semibold mb-1">
+            ⚠️ Configuration Error
+          </div>
+          <h2 className="block mt-1 text-lg leading-tight font-medium text-black">
+            Environment Variables Missing
+          </h2>
+          <p className="mt-2 text-gray-500 text-sm">
+            Contract addresses are not configured. Please check your environment variables.
+          </p>
+          <div className="mt-4 p-3 bg-gray-100 rounded-lg">
+            <p className="text-xs text-gray-700">
+              Required: NEXT_PUBLIC_FACTORY_ADDRESS, NEXT_PUBLIC_MARKETPLACE_ADDRESS
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="container mx-auto px-4 py-8">
       <Link

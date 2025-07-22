@@ -12,10 +12,6 @@ interface MintFormProps {
 
 const factoryAddress = process.env.NEXT_PUBLIC_FACTORY_ADDRESS;
 
-if (!factoryAddress) {
-  throw new Error("Factory address is not defined");
-}
-
 interface CollectionInfo {
   name: string;
   symbol: string;
@@ -136,6 +132,30 @@ export default function MintForm({ signer, userAddress }: MintFormProps) {
       setIsLoading(false);
     }
   };
+
+  // Check if environment variables are loaded
+  if (!factoryAddress) {
+    return (
+      <div className="max-w-md mx-auto bg-red-50 rounded-xl shadow-md overflow-hidden md:max-w-2xl m-4">
+        <div className="p-8">
+          <div className="uppercase tracking-wide text-sm text-red-500 font-semibold mb-1">
+            ⚠️ Configuration Error
+          </div>
+          <h2 className="block mt-1 text-lg leading-tight font-medium text-black">
+            Environment Variables Missing
+          </h2>
+          <p className="mt-2 text-gray-500 text-sm">
+            Factory address is not configured. Please check your environment variables.
+          </p>
+          <div className="mt-4 p-3 bg-gray-100 rounded-lg">
+            <p className="text-xs text-gray-700">
+              Required: NEXT_PUBLIC_FACTORY_ADDRESS
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-md mx-auto bg-white rounded-xl shadow-md overflow-hidden md:max-w-2xl m-4">
