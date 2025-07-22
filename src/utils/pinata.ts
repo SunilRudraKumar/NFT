@@ -1,8 +1,8 @@
 import axios from "axios";
 import FormData from "form-data";
 
-const key = process.env.NEXT_PUBLIC_PINATA_KEY;
-const secret = process.env.NEXT_PUBLIC_PINATA_SECRET;
+const key = process.env.NEXT_PUBLIC_PINATA_API_KEY;
+const secret = process.env.NEXT_PUBLIC_PINATA_SECRET_API_KEY;
 
 interface PinataResponse {
   success: boolean;

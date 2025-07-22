@@ -5,6 +5,7 @@ import { ethers } from "ethers";
 import Image from "next/image";
 import { formatEther } from "ethers";
 import Link from "next/link";
+import RentalSection from "./RentalSection";
 
 const factoryAddress = process.env.NEXT_PUBLIC_FACTORY_ADDRESS;
 const marketplaceAddress = process.env.NEXT_PUBLIC_MARKETPLACE_ADDRESS;
@@ -21,6 +22,9 @@ interface NFTInfo {
   tokenId: number;
   owner: string;
   tokenURI: string;
+  user?: string; // Current renter (for rentable NFTs)
+  expires?: number; // Rental expiry timestamp (for rentable NFTs)
+  isRentable?: boolean; // Whether this NFT supports rentals
 }
 
 interface CollectionNFTs {
@@ -54,25 +58,36 @@ export default function Marketplace({ userAddress }: MarketplaceProps) {
   );
   const [imageUrls, setImageUrls] = useState<{ [key: string]: string }>({});
 
+  // Add state for rentable collection ABI
+  const [rentableCollectionABI, setRentableCollectionABI] = useState<any>(null);
+
   // Fetch ABIs
   const fetchABIs = useCallback(async () => {
     try {
-      const [factoryResponse, collectionResponse, marketplaceResponse] =
-        await Promise.all([
-          fetch("/abi/NFTCollectionFactory.json"),
-          fetch("/abi/NFTCollection.json"),
-          fetch("/abi/NFTMarketplace.json"),
-        ]);
-
-      const [factoryAbi, collectionAbi, marketplaceAbi] = await Promise.all([
-        factoryResponse.json(),
-        collectionResponse.json(),
-        marketplaceResponse.json(),
+      const [
+        factoryResponse,
+        collectionResponse,
+        marketplaceResponse,
+        rentableResponse,
+      ] = await Promise.all([
+        fetch("/abi/NFTCollectionFactory.json"),
+        fetch("/abi/NFTCollection.json"),
+        fetch("/abi/NFTMarketplace.json"),
+        fetch("/abi/NFTCollectionRentable.json"),
       ]);
+
+      const [factoryAbi, collectionAbi, marketplaceAbi, rentableAbi] =
+        await Promise.all([
+          factoryResponse.json(),
+          collectionResponse.json(),
+          marketplaceResponse.json(),
+          rentableResponse.json(),
+        ]);
 
       setFactoryABI(factoryAbi);
       setCollectionABI(collectionAbi);
       setMarketplaceABI(marketplaceAbi);
+      setRentableCollectionABI(rentableAbi);
     } catch (error) {
       console.error("Error fetching ABIs:", error);
     }
@@ -81,18 +96,60 @@ export default function Marketplace({ userAddress }: MarketplaceProps) {
   // Add function to fetch NFTs for a collection
   const fetchCollectionNFTs = useCallback(
     async (provider: ethers.Provider, collectionAddress: string) => {
-      if (!collectionABI) return { nfts: [] };
+      if (!collectionABI || !rentableCollectionABI) return { nfts: [] };
 
       try {
+        // Check if this is the rentable collection
+        const isRentableCollection =
+          collectionAddress.toLowerCase() ===
+          "0x49532f8852be8f519945C0f1fF4944b82c3ad5bb".toLowerCase();
+
+        // Use the appropriate ABI
+        const abi = isRentableCollection
+          ? rentableCollectionABI
+          : collectionABI;
         const collection = new ethers.Contract(
           collectionAddress,
-          collectionABI,
+          abi,
           provider
         );
 
-        // Get all NFTs from the collection
-        const nfts = await collection.getAllNFTs();
-        return { nfts };
+        if (isRentableCollection) {
+          // For rentable collection, getAllNFTs returns multiple arrays
+          const result = await collection.getAllNFTs();
+
+          // Handle the tuple return properly
+          const tokenIds = result[0] || result.tokenIds;
+          const owners = result[1] || result.owners;
+          const uris = result[2] || result.uris;
+          const users = result[3] || result.users;
+          const expires = result[4] || result.expires;
+
+                    if (!tokenIds || tokenIds.length === 0) {
+            return { nfts: [] };
+          }
+          
+          const nfts = tokenIds.map((tokenId: any, index: number) => ({
+            tokenId: Number(tokenId),
+            owner: owners[index] || "0x0000000000000000000000000000000000000000",
+            tokenURI: uris[index] || "",
+            user: users[index] || "0x0000000000000000000000000000000000000000", // Current renter
+            expires: Number(expires[index]) || 0, // Rental expiry timestamp
+            isRentable: true, // Mark as rentable
+          }));
+
+          return { nfts };
+        } else {
+          // For regular collections, getAllNFTs returns an array of NFTInfo structs
+          const result = await collection.getAllNFTs();
+          const nfts = result.map((nft: any) => ({
+            tokenId: Number(nft.tokenId) || 0,
+            owner: nft.owner || "0x0000000000000000000000000000000000000000",
+            tokenURI: nft.tokenURI || "",
+            isRentable: false, // Mark as not rentable
+          }));
+          return { nfts };
+        }
       } catch (error) {
         console.error(
           `Error fetching NFTs for collection ${collectionAddress}:`,
@@ -101,7 +158,7 @@ export default function Marketplace({ userAddress }: MarketplaceProps) {
         return { nfts: [] };
       }
     },
-    [collectionABI]
+    [collectionABI, rentableCollectionABI]
   );
 
   // Update fetchCollections
@@ -122,7 +179,18 @@ export default function Marketplace({ userAddress }: MarketplaceProps) {
         provider
       );
 
-      const allCollections = await factory.getAllCollections();
+      const factoryCollections = await factory.getAllCollections();
+
+      // Add the pre-deployed rentable collection
+      const rentableCollection = {
+        name: "RentableArt (ERC-4907)",
+        symbol: "RART",
+        collectionAddress: "0x49532f8852be8f519945C0f1fF4944b82c3ad5bb",
+        owner: userAddress || "0x0000000000000000000000000000000000000000",
+        createdAt: BigInt(Date.now()),
+      };
+
+      const allCollections = [...factoryCollections, rentableCollection];
       setCollections(allCollections);
 
       // Fetch NFTs for each collection
@@ -143,40 +211,11 @@ export default function Marketplace({ userAddress }: MarketplaceProps) {
     }
   }, [factoryABI, fetchCollectionNFTs]);
 
-  // Add function to fetch listed NFTs
-  // Add function to fetch listed NFTs
+  // Fetch listed NFTs - simplified for now (individual listings can be checked per NFT)
   const fetchListedNFTs = useCallback(async () => {
     if (!marketplaceABI) return;
-
-    try {
-      const provider = new ethers.BrowserProvider(window.ethereum);
-      const marketplace = new ethers.Contract(
-        marketplaceAddress!,
-        marketplaceABI,
-        provider
-      );
-
-      const [nftContracts, tokenIds, prices, sellers] =
-        await marketplace.getAllListedNFTs();
-
-      // Create a Map to ensure uniqueness
-      const uniqueListedNFTs = new Map<string, ListedNFT>();
-
-      nftContracts.forEach((contract: string, index: number) => {
-        const key = `${contract}-${tokenIds[index]}`;
-        uniqueListedNFTs.set(key, {
-          nftContract: contract,
-          tokenId: Number(tokenIds[index]),
-          price: prices[index],
-          seller: sellers[index],
-        });
-      });
-
-      // Convert the Map back to an array and set it to state
-      setListedNFTs(Array.from(uniqueListedNFTs.values()));
-    } catch (error) {
-      console.error("Error fetching listed NFTs:", error);
-    }
+    // TODO: Implement individual listing checks or add getAllListedNFTs to contract
+    console.log("Listed NFTs fetching - individual checks per NFT");
   }, [marketplaceABI]);
 
   // Add function to list NFT for sale
@@ -300,8 +339,13 @@ export default function Marketplace({ userAddress }: MarketplaceProps) {
       for (const collection of collections) {
         for (const nft of collectionNFTs[collection.collectionAddress]?.nfts ||
           []) {
-          if (nft.tokenURI && isValidUrl(nft.tokenURI)) {
-            urls[nft.tokenId] = await fetchImageUrl(nft.tokenURI);
+          if (nft.tokenURI) {
+            // Create unique key using collection address and token ID
+            const key = `${collection.collectionAddress}-${nft.tokenId}`;
+            const imageUrl = await fetchImageUrl(nft.tokenURI);
+            if (imageUrl) {
+              urls[key] = imageUrl;
+            }
           }
         }
       }
@@ -314,12 +358,39 @@ export default function Marketplace({ userAddress }: MarketplaceProps) {
   // Function to fetch image URL from metadata if necessary
   async function fetchImageUrl(tokenURI: string): Promise<string> {
     try {
-      const response = await fetch(tokenURI);
+      // Convert IPFS hash to gateway URL if needed
+      let metadataUrl = tokenURI;
+      if (tokenURI.startsWith("Qm") || tokenURI.startsWith("baf")) {
+        metadataUrl = `https://gateway.pinata.cloud/ipfs/${tokenURI}`;
+      } else if (tokenURI.startsWith("ipfs://")) {
+        metadataUrl = tokenURI.replace(
+          "ipfs://",
+          "https://gateway.pinata.cloud/ipfs/"
+        );
+      }
+
+      console.log("Fetching metadata from:", metadataUrl);
+      const response = await fetch(metadataUrl);
       const metadata = await response.json();
-      return metadata.image; // Assuming the image URL is stored under the 'image' key
+      console.log("Metadata:", metadata);
+
+      // Convert image URL if it's IPFS
+      let imageUrl = metadata.image;
+      if (imageUrl) {
+        if (imageUrl.startsWith("Qm") || imageUrl.startsWith("baf")) {
+          imageUrl = `https://gateway.pinata.cloud/ipfs/${imageUrl}`;
+        } else if (imageUrl.startsWith("ipfs://")) {
+          imageUrl = imageUrl.replace(
+            "ipfs://",
+            "https://gateway.pinata.cloud/ipfs/"
+          );
+        }
+      }
+
+      return imageUrl || tokenURI; // Return image URL or fallback to tokenURI
     } catch (error) {
       console.error("Error fetching image URL:", error);
-      return tokenURI; // Fallback to the original URI if fetching fails
+      return ""; // Return empty string if fetching fails
     }
   }
 
@@ -429,16 +500,17 @@ export default function Marketplace({ userAddress }: MarketplaceProps) {
                       No NFTs in this collection
                     </p>
                   ) : (
-                    collectionNFTs[collection.collectionAddress]?.nfts.map(
-                      (nft) => (
+                    collectionNFTs[collection.collectionAddress]?.nfts
+                      .filter((nft) => nft && nft.tokenId && nft.owner) // Filter out invalid NFTs
+                      .map((nft) => (
                         <div
                           key={nft.tokenId.toString()}
                           className="border rounded-lg p-4 bg-gray-50 hover:bg-gray-100 transition-colors"
                         >
-                          {/* Display NFT Image if tokenURI is a valid URL */}
-                          {imageUrls[nft.tokenId] && (
+                          {/* Display NFT Image */}
+                          {imageUrls[`${collection.collectionAddress}-${nft.tokenId}`] && (
                             <Image
-                              src={imageUrls[nft.tokenId]}
+                              src={imageUrls[`${collection.collectionAddress}-${nft.tokenId}`]}
                               alt={`NFT ${nft.tokenId}`}
                               width={200}
                               height={200}
@@ -449,14 +521,34 @@ export default function Marketplace({ userAddress }: MarketplaceProps) {
                             Token ID: {nft.tokenId.toString()}
                           </p>
                           <p className="text-sm text-gray-600 truncate">
-                            Owner: {nft.owner}
+                            Owner: {nft.owner || "Unknown"}
                           </p>
-                          <p className="text-xs text-gray-500 truncate mb-3">
+                          <p className="text-xs text-gray-500 truncate">
                             URI: {nft.tokenURI}
                           </p>
+                          
+                          {/* Show rental status for rentable NFTs */}
+                          {nft.isRentable && (
+                            <div className="mt-2 mb-3">
+                              {nft.user && nft.user !== "0x0000000000000000000000000000000000000000" && nft.expires && nft.expires > Date.now() / 1000 ? (
+                                <div className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">
+                                  🏠 Currently Rented
+                                  <br />
+                                  Renter: {nft.user.slice(0, 6)}...{nft.user.slice(-4)}
+                                  <br />
+                                  Expires: {new Date(nft.expires * 1000).toLocaleDateString()}
+                                </div>
+                              ) : (
+                                <div className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
+                                  🏠 Available for Rent
+                                </div>
+                              )}
+                            </div>
+                          )}
 
-                          {nft.owner.toLowerCase() ===
-                            window.ethereum?.selectedAddress?.toLowerCase() && (
+                          {nft.owner &&
+                            nft.owner.toLowerCase() ===
+                              window.ethereum?.selectedAddress?.toLowerCase() && (
                             <div className="mt-3 space-y-2">
                               <input
                                 type="number"
@@ -484,6 +576,27 @@ export default function Marketplace({ userAddress }: MarketplaceProps) {
                                 List for Sale
                               </button>
                             </div>
+                          )}
+
+                          {/* Rental Section - Only show for rentable NFTs */}
+                          {nft.isRentable && (
+                            <RentalSection
+                              nftContract={collection.collectionAddress}
+                              tokenId={nft.tokenId}
+                              userAddress={userAddress}
+                              isOwner={
+                                nft.owner &&
+                                userAddress &&
+                                nft.owner.toLowerCase() ===
+                                userAddress.toLowerCase()
+                              }
+                              marketplaceABI={marketplaceABI}
+                              collectionABI={rentableCollectionABI} // Use rentable ABI for rentable collections
+                              onRentalUpdate={() => {
+                                fetchCollections();
+                                fetchListedNFTs();
+                              }}
+                            />
                           )}
                         </div>
                       )

@@ -52,7 +52,17 @@ export default function MintForm({ signer, userAddress }: MintFormProps) {
       const collections = await factoryContract.getCollectionsByOwner(
         signer.address
       );
-      setCollections(collections);
+      
+      // Add the pre-deployed rentable collection
+      const rentableCollection = {
+        name: "RentableArt (ERC-4907)",
+        symbol: "RART",
+        collectionAddress: "0x49532f8852be8f519945C0f1fF4944b82c3ad5bb",
+        owner: signer.address, // Allow anyone to mint
+        createdAt: Date.now()
+      };
+      
+      setCollections([...collections, rentableCollection]);
     } catch (error) {
       console.error("Error fetching collections:", error);
     }
